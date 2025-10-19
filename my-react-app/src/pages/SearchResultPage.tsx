@@ -415,6 +415,7 @@ export function SearchResultPage() {
         </div>
       )}
 
+      {/* AI 리뷰 분석은 이제 고급 AI 분석 시스템에 통합됨 */}
 
     </div>
   );

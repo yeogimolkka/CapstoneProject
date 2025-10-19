@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useState } from 'react';
 
 export function Header() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const {isAuthenticated, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handleLogout = () => {
@@ -27,10 +27,13 @@ export function Header() {
           <Link to="/about" className="nav-link">
             설명
           </Link>
-          <Link to="/dangerous" className="nav-link">
+          <Link to="/community" className="nav-link">
+            커뮤니티
+          </Link>
+          <Link to="/dangerous-shops" className="nav-link">
             위험 쇼핑몰
           </Link>
-          <Link to="/top-rated" className="nav-link">
+          <Link to="/recommended-shops" className="nav-link">
             추천 쇼핑몰
           </Link>
         </nav>
@@ -75,6 +78,9 @@ export function Header() {
           </Link>
           <Link to="/about" className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
             설명
+          </Link>
+          <Link to="/community" className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
+            커뮤니티
           </Link>
           <Link to="/dangerous" className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
             위험 쇼핑몰

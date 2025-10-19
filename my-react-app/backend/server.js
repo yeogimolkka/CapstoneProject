@@ -3,10 +3,12 @@ const cors = require('cors');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 // 라우터 import
 const aiAnalysisRoutes = require('./routes/ai-analysis');
+const communityRoutes = require('./routes/community');
 
 // 입력 검증을 위한 유틸리티 함수들
 const sanitizeInput = (input) => {
@@ -83,7 +85,7 @@ app.use(express.json());
 
 // Supabase 클라이언트 초기화
 const supabaseUrl = process.env.SUPABASE_URL || 'https://tqdvolgachfszomwhlfe.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "sb_secret_c1gfJj9YRkAslPTyH6tQDw_U2z63rWd";
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 console.log('=== Supabase 연결 확인 ===');
@@ -93,11 +95,220 @@ console.log('====================');
 
 // SMS 발송을 위한 설정 (SolAPI 사용)
 const SMS_CONFIG = {
-  solApiKey: process.env.SOLAPI_API_KEY || 'NCS1ABHHAUVLBFYU', // 환경변수에서 가져오기
-  solApiSecret: process.env.SOLAPI_API_SECRET || 'VBXVKFTFZ9WGYKSN0UVR6VOWLUFIUP3W', // 환경변수에서 가져오기
-  solApiFromNumber: process.env.SOLAPI_FROM_NUMBER || '01052190930', // 환경변수에서 가져오기
-  smsProvider: process.env.SMS_PROVIDER || 'solapi' // 환경변수에서 가져오기
+  solApiKey: process.env.SOL_API_KEY,
+  solApiSecret: process.env.SOL_API_SECRET,
+  solApiFromNumber: process.env.SOL_API_FROM_NUMBER,
+  smsProvider: process.env.SMS_PROVIDER || 'solapi'
 };
+
+// Gmail SMTP 설정
+const emailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD
+  }
+});
+
+// 이메일 전송 확인
+if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+  console.log('=== Gmail SMTP 설정 ===');
+  console.log('Gmail 계정:', process.env.GMAIL_USER);
+  console.log('앱 비밀번호:', process.env.GMAIL_APP_PASSWORD ? '설정됨 ✓' : '미설정');
+  console.log('====================');
+  
+  // Gmail 연결 테스트
+  emailTransporter.verify(function(error, success) {
+    if (error) {
+      console.error('❌ Gmail SMTP 연결 실패:', error.message);
+    } else {
+      console.log('✅ Gmail SMTP 서버 연결 성공!');
+    }
+  });
+} else {
+  console.warn('⚠️  Gmail SMTP 설정이 완료되지 않았습니다. .env 파일을 확인하세요.');
+}
+
+// 이메일 전송 함수
+async function sendPasswordResetEmail(email, resetLink) {
+  const mailOptions = {
+    from: `"여기몰까 - 안전한 쇼핑몰 검증" <${process.env.GMAIL_USER}>`,
+    to: email,
+    subject: '[여기몰까] 비밀번호 재설정 요청',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+          }
+          .email-container { 
+            max-width: 600px; 
+            margin: 20px auto; 
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          }
+          .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            padding: 40px 30px; 
+            text-align: center;
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+          }
+          .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 14px;
+          }
+          .content { 
+            padding: 40px 30px;
+            background: white;
+          }
+          .content p {
+            margin: 0 0 20px 0;
+            color: #555;
+          }
+          .button-container {
+            text-align: center;
+            margin: 35px 0;
+          }
+          .button { 
+            display: inline-block; 
+            padding: 16px 40px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white !important; 
+            text-decoration: none; 
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+          }
+          .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+          }
+          .link-box {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            margin: 20px 0;
+            word-break: break-all;
+            font-size: 13px;
+            color: #666;
+          }
+          .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 25px 0;
+          }
+          .warning-box p {
+            margin: 0;
+            color: #856404;
+          }
+          .warning-box strong {
+            color: #d39e00;
+          }
+          .footer { 
+            text-align: center; 
+            padding: 30px;
+            background: #f9f9f9;
+            color: #999;
+            font-size: 13px;
+            border-top: 1px solid #eee;
+          }
+          .footer p {
+            margin: 5px 0;
+          }
+          .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #ddd, transparent);
+            margin: 30px 0;
+          }
+          .icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="header">
+            <div class="icon">🔐</div>
+            <h1>비밀번호 재설정</h1>
+            <p>여기몰까 - 안전한 쇼핑을 위한 첫걸음</p>
+          </div>
+          
+          <div class="content">
+            <p>안녕하세요,</p>
+            <p>고객님의 계정에 대한 비밀번호 재설정 요청을 받았습니다.</p>
+            <p>아래 버튼을 클릭하여 새로운 비밀번호를 설정하세요:</p>
+            
+            <div class="button-container">
+              <a href="${resetLink}" class="button">비밀번호 재설정하기</a>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <p style="font-size: 14px; color: #777;">버튼이 작동하지 않는다면, 아래 링크를 복사하여 브라우저 주소창에 붙여넣으세요:</p>
+            <div class="link-box">
+              ${resetLink}
+            </div>
+            
+            <div class="warning-box">
+              <p>⚠️ 이 링크는 <strong>1시간 동안만 유효</strong>합니다.</p>
+              <p style="margin-top: 8px;">⏱️ 만료 후에는 다시 요청해주세요.</p>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <p style="color: #999; font-size: 13px; line-height: 1.8;">
+              💡 <strong>보안 안내</strong><br>
+              • 본인이 요청하지 않았다면 이 이메일을 무시하세요.<br>
+              • 비밀번호를 타인과 절대 공유하지 마세요.<br>
+              • 의심스러운 활동이 있다면 즉시 고객센터로 연락주세요.
+            </p>
+          </div>
+          
+          <div class="footer">
+            <p><strong>여기몰까</strong> - 안전한 쇼핑몰 검증 서비스</p>
+            <p>이 이메일에 회신하지 마세요. 자동 발송된 메일입니다.</p>
+            <p style="margin-top: 15px; color: #ccc;">© 2024 여기몰까. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  };
+
+  try {
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log('✅ 이메일 전송 성공!');
+    console.log('   메시지 ID:', info.messageId);
+    console.log('   받는 사람:', email);
+    return true;
+  } catch (error) {
+    console.error('❌ 이메일 전송 실패:', error.message);
+    throw error;
+  }
+}
 
 // 타이틀 캐시 (메모리 기반)
 const titleCache = new Map();
@@ -737,7 +948,12 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(201).json({ 
       success: true, 
       message: '회원가입이 완료되었습니다.',
-      user: newUser
+      user: {
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+        phoneNumber: newUser.phone_number  // camelCase로 변환
+      }
     });
     
   } catch (error) {
@@ -778,22 +994,170 @@ app.post('/api/auth/login', async (req, res) => {
     // JWT 토큰 생성
     const token = generateToken(user);
 
+    const userResponse = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      phoneNumber: user.phone_number  // camelCase로 변환
+    };
+
     res.json({ 
       success: true, 
       message: '로그인 성공',
       token: token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        phone_number: user.phone_number
-      }
+      user: userResponse
     });
     
   } catch (error) {
     console.error('로그인 오류:', error);
     res.status(500).json({ 
       error: `로그인에 실패했습니다. ${error.message}` 
+    });
+  }
+});
+
+// 비밀번호 재설정 요청 (이메일로 링크 전송)
+app.post('/api/auth/request-password-reset', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: '이메일을 입력해주세요.' });
+    }
+
+    // 사용자 조회
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    // 사용자가 존재하지 않으면 에러 반환
+    if (error || !user) {
+      return res.status(404).json({ 
+        success: false,
+        error: '존재하지 않는 이메일입니다. 가입된 이메일 주소를 입력해주세요.'
+      });
+    }
+
+    // 재설정 토큰 생성 (UUID 또는 랜덤 문자열)
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 3600000); // 1시간 후 만료
+
+    // 토큰 저장
+    const { error: tokenError } = await supabase
+      .from('password_reset_tokens')
+      .insert({
+        user_id: user.id,
+        token: resetToken,
+        expires_at: expiresAt.toISOString(),
+        used: false
+      });
+
+    if (tokenError) {
+      console.error('토큰 저장 오류:', tokenError);
+      throw tokenError;
+    }
+
+    // 재설정 링크 생성
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    // 이메일 전송
+    console.log('=== 비밀번호 재설정 이메일 발송 시작 ===');
+    console.log(`받는 사람: ${email}`);
+    console.log(`사용자 ID: ${user.id}`);
+    console.log(`토큰 생성 시간: ${new Date().toLocaleString('ko-KR')}`);
+    console.log(`만료 시간: ${expiresAt.toLocaleString('ko-KR')}`);
+    
+    try {
+      await sendPasswordResetEmail(email, resetLink);
+      console.log('✅ 이메일 전송 완료!');
+    } catch (emailError) {
+      console.error('❌ 이메일 전송 실패:', emailError.message);
+      // 이메일 전송 실패해도 보안상 사용자에게는 성공 메시지 반환
+      // 실제로는 관리자가 로그를 확인하여 문제를 해결해야 함
+    }
+    
+    console.log('========================================');
+
+    res.json({ 
+      success: true,
+      message: '비밀번호 재설정 요청이 처리되었습니다. 등록된 이메일을 확인해주세요.'
+    });
+    
+  } catch (error) {
+    console.error('비밀번호 재설정 요청 오류:', error);
+    res.status(500).json({ 
+      error: `비밀번호 재설정 요청에 실패했습니다. ${error.message}` 
+    });
+  }
+});
+
+// 비밀번호 재설정 (토큰 검증 및 비밀번호 변경)
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: '토큰과 새 비밀번호를 입력해주세요.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: '비밀번호는 최소 6자 이상이어야 합니다.' });
+    }
+
+    // 토큰 조회 및 검증
+    const { data: resetToken, error: tokenError } = await supabase
+      .from('password_reset_tokens')
+      .select('*')
+      .eq('token', token)
+      .eq('used', false)
+      .single();
+
+    if (tokenError || !resetToken) {
+      return res.status(400).json({ 
+        error: '유효하지 않거나 만료된 토큰입니다.' 
+      });
+    }
+
+    // 만료 시간 확인
+    if (new Date(resetToken.expires_at) < new Date()) {
+      return res.status(400).json({ 
+        error: '토큰이 만료되었습니다. 다시 요청해주세요.' 
+      });
+    }
+
+    // 새 비밀번호 해시화
+    const hashedPassword = hashPassword(newPassword);
+
+    // 비밀번호 업데이트
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('id', resetToken.user_id);
+
+    if (updateError) {
+      console.error('비밀번호 업데이트 오류:', updateError);
+      throw updateError;
+    }
+
+    // 토큰을 사용됨으로 표시
+    await supabase
+      .from('password_reset_tokens')
+      .update({ used: true })
+      .eq('id', resetToken.id);
+
+    res.json({ 
+      success: true,
+      message: '비밀번호가 성공적으로 변경되었습니다.'
+    });
+    
+  } catch (error) {
+    console.error('비밀번호 재설정 오류:', error);
+    res.status(500).json({ 
+      error: `비밀번호 재설정에 실패했습니다. ${error.message}` 
     });
   }
 });
@@ -1753,6 +2117,135 @@ app.use((req, res, next) => {
 
 // AI 분석 라우터 등록
 app.use('/api/ai', aiAnalysisRoutes);
+
+// 커뮤니티 라우터 등록
+app.use('/api/community', communityRoutes);
+
+// 위험 쇼핑몰 목록 조회 (신고 많은 순)
+app.get('/api/dangerous-shops', async (req, res) => {
+  try {
+    // 검색된 쇼핑몰만 조회 (search_count > 0)
+    const { data: shops, error } = await supabase
+      .from('shops')
+      .select('*')
+      .gt('search_count', 0);
+
+    if (error) throw error;
+
+    // 각 쇼핑몰의 신고 수와 평점 계산
+    const shopsWithStats = await Promise.all(
+      shops.map(async (shop) => {
+        // 신고 수 조회
+        const { count: reportCount } = await supabase
+          .from('reports')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shop.id);
+
+        // 평점 조회
+        const { data: ratings } = await supabase
+          .from('ratings')
+          .select('rating')
+          .eq('shop_id', shop.id);
+
+        const ratingCount = ratings?.length || 0;
+        const averageRating = ratingCount > 0 
+          ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratingCount 
+          : 0;
+
+        return {
+          ...shop,
+          reportCount: reportCount || 0,
+          averageRating,
+          ratingCount
+        };
+      })
+    );
+
+    // 신고 수 기준으로 정렬
+    const sortedShops = shopsWithStats.sort((a, b) => b.reportCount - a.reportCount);
+
+    res.json({ success: true, shops: sortedShops });
+  } catch (error) {
+    console.error('위험 쇼핑몰 조회 오류:', error);
+    res.status(500).json({ error: '위험 쇼핑몰 조회 실패: ' + error.message });
+  }
+});
+
+// 추천 쇼핑몰 목록 조회 (고평점 순)
+app.get('/api/recommended-shops', async (req, res) => {
+  try {
+    // 검색된 쇼핑몰만 조회 (search_count > 0)
+    const { data: shops, error } = await supabase
+      .from('shops')
+      .select('*')
+      .gt('search_count', 0);
+
+    if (error) throw error;
+
+    // 각 쇼핑몰의 신고 수와 평점 계산
+    const shopsWithStats = await Promise.all(
+      shops.map(async (shop) => {
+        // 신고 수 조회
+        const { count: reportCount } = await supabase
+          .from('reports')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shop.id);
+
+        // 평점 조회
+        const { data: ratings } = await supabase
+          .from('ratings')
+          .select('rating')
+          .eq('shop_id', shop.id);
+
+        const ratingCount = ratings?.length || 0;
+        const averageRating = ratingCount > 0 
+          ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratingCount 
+          : 0;
+
+        return {
+          ...shop,
+          reportCount: reportCount || 0,
+          averageRating,
+          ratingCount
+        };
+      })
+    );
+
+    // 평점 기준으로 정렬 (검색된 쇼핑몰만)
+    const sortedShops = shopsWithStats.sort((a, b) => b.averageRating - a.averageRating);
+
+    res.json({ success: true, shops: sortedShops });
+  } catch (error) {
+    console.error('추천 쇼핑몰 조회 오류:', error);
+    res.status(500).json({ error: '추천 쇼핑몰 조회 실패: ' + error.message });
+  }
+});
+
+// 테스트 이메일 발송 API (개발용)
+app.post('/api/test-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: '이메일 주소를 입력해주세요.' });
+    }
+    
+    console.log(`\n=== 테스트 이메일 발송 시작 ===`);
+    console.log(`받는 사람: ${email}`);
+    console.log(`발신자: ${process.env.GMAIL_USER}`);
+    
+    const testResetLink = 'http://localhost:5173/reset-password?token=test123';
+    await sendPasswordResetEmail(email, testResetLink);
+    
+    console.log(`✅ 테스트 이메일 전송 완료`);
+    console.log(`===============================\n`);
+    
+    res.json({ success: true, message: '테스트 이메일이 발송되었습니다.' });
+  } catch (error) {
+    console.error(`❌ 테스트 이메일 전송 실패:`, error);
+    res.status(500).json({ error: `이메일 전송 실패: ${error.message}` });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);

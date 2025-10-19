@@ -94,6 +94,10 @@ export function LoginPage() {
         <div className="signup-link">
           계정이 없으신가요? <Link to="/signup">회원가입</Link>
         </div>
+        
+        <div className="forgot-password-link">
+          비밀번호를 잊으셨나요? <Link to="/forgot-password">비밀번호 찾기</Link>
+        </div>
       </div>
     </div>
   );
