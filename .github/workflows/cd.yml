@@ -2,7 +2,9 @@ name: CD
 
 on:
   push:
-    branches: [ main ]
+    branches: 
+      - main      # 프로덕션 배포
+      - develop   # 스테이징 배포
     tags:
       - 'v*'
   workflow_dispatch:
@@ -10,7 +12,7 @@ on:
       environment:
         description: 'Deployment environment'
         required: true
-        default: 'production'
+        default: 'staging'
         type: choice
         options:
           - production
@@ -39,18 +41,31 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "tag=prod" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "tag=staging" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "tag=staging" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ secrets.DOCKER_USERNAME }}/capstone-backend
           tags: |
+            type=raw,value=${{ steps.env.outputs.tag }}-{{sha}}
+            type=raw,value=${{ steps.env.outputs.tag }}-latest
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
       
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -68,8 +83,8 @@ jobs:
     name: Deploy Backend
     needs: build-docker
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    environment: ${{ github.event.inputs.environment || 'production' }}
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     
     defaults:
       run:
@@ -89,22 +104,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Determine deployment stage
+        id: stage
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+            echo "env_name=production" >> $GITHUB_OUTPUT
+          else
+            echo "stage=staging" >> $GITHUB_OUTPUT
+            echo "env_name=staging" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Configure AWS credentials
         if: env.DEPLOY_TO_AWS == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID_PROD || secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ github.ref == 'refs/heads/main' && secrets.AWS_SECRET_ACCESS_KEY_PROD || secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
           aws-region: ap-northeast-2
       
       - name: Deploy to AWS Lambda (Serverless)
         if: env.DEPLOY_TO_AWS == 'true'
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          NODE_ENV: production
+          DATABASE_URL: ${{ github.ref == 'refs/heads/main' && secrets.DATABASE_URL_PROD || secrets.DATABASE_URL_STAGING }}
+          NODE_ENV: ${{ steps.stage.outputs.env_name }}
         run: |
           npm install -g serverless
-          serverless deploy --stage ${{ github.event.inputs.environment || 'prod' }}
+          serverless deploy --stage ${{ steps.stage.outputs.stage }}
       
       - name: Deploy notification
         if: always()
@@ -120,8 +146,8 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    environment: ${{ github.event.inputs.environment || 'production' }}
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     
     defaults:
       run:
@@ -141,10 +167,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Determine deployment environment
+        id: frontend-env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "vercel_env=production" >> $GITHUB_OUTPUT
+            echo "api_url=${{ secrets.VITE_API_URL_PROD }}" >> $GITHUB_OUTPUT
+          else
+            echo "vercel_env=preview" >> $GITHUB_OUTPUT
+            echo "api_url=${{ secrets.VITE_API_URL_STAGING }}" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Build
         run: npm run build
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_API_URL: ${{ steps.frontend-env.outputs.api_url }}
       
       - name: Deploy to Vercel
         if: env.DEPLOY_TO_VERCEL == 'true'
@@ -152,8 +189,8 @@ jobs:
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+          vercel-project-id: ${{ github.ref == 'refs/heads/main' && secrets.VERCEL_PROJECT_ID_PROD || secrets.VERCEL_PROJECT_ID_STAGING }}
+          vercel-args: ${{ github.ref == 'refs/heads/main' && '--prod' || '--target preview' }}
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
